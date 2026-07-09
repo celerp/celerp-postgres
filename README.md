@@ -79,11 +79,14 @@ JIT/`llvmjit`, `uuid-ossp`, `xml2`) are not included.
 Three symbols; that's the entire surface:
 
 ```python
-from celerp_postgres import POSTGRES_VERSION, bin_dir, tool
+from celerp_postgres import POSTGRES_VERSION, bin_dir, tool, icu_data_dir
 
 POSTGRES_VERSION   # "17.10.0" — the bundled PostgreSQL version (== package version)
 bin_dir()          # ".../site-packages/celerp_postgres/pginstall/bin"
 tool("pg_dump")    # full path to a tool; raises FileNotFoundError if absent
+icu_data_dir()     # musl wheels only: set ICU_DATA to this when spawning the
+                   # server (Alpine's ICU reads data from an external file);
+                   # None on every other platform
 ```
 
 No lifecycle magic, no hidden daemons, no atexit hooks. You own the process — which is

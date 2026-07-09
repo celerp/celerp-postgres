@@ -201,6 +201,9 @@ def _alma_index(arch: str) -> dict[str, str]:
     return idx
 
 
+_ALPINE_BY_NAME: dict[str, str] = {}  # pkg name -> url, filled by _alpine_index
+
+
 def _alpine_index(arch: str) -> dict[str, str]:
     """soname -> .apk download URL, from Alpine APKINDEX provides (so: entries)."""
     import io
@@ -216,6 +219,7 @@ def _alpine_index(arch: str) -> dict[str, str]:
             if "P" not in fields:
                 continue
             url = f"{base}{fields['P']}-{fields['V']}.apk"
+            _ALPINE_BY_NAME.setdefault(fields["P"], url)
             for p in fields.get("p", "").split():
                 if p.startswith("so:"):
                     idx.setdefault(p[3:].split("=")[0], url)
@@ -304,6 +308,39 @@ def graft_linux(tree: Path, target: str) -> None:
     raise RuntimeError(f"{target}: graft closure did not converge")
 
 
+def graft_icu_data(tree: Path) -> None:
+    """musl only: Alpine's libicudata.so is a 12 KB stub — the actual ICU data
+    lives in icu-data-en as /usr/share/icu/<v>/icudt<v>l.dat. PG17's initdb
+    always version-checks the built-in 'unicode' ICU collation, so without this
+    file initdb FATALs (U_FILE_ACCESS_ERROR). Ship the ~1 MB English subset
+    (contains the root locale) and point ICU at it via the ICU_DATA env var —
+    see celerp_postgres.icu_data_dir()."""
+    import io
+    import zlib
+
+    url = _ALPINE_BY_NAME.get("icu-data-en")
+    if not url:
+        raise RuntimeError("icu-data-en not found in Alpine index")
+    data = _fetch(url)
+    off = 0
+    streams = []
+    while off < len(data):
+        d = zlib.decompressobj(wbits=31)
+        streams.append(d.decompress(data[off:]))
+        off = len(data) - len(d.unused_data)
+        if not d.unused_data:
+            break
+    with tarfile.open(fileobj=io.BytesIO(streams[-1])) as tf:
+        for m in tf:
+            if m.isfile() and m.name.endswith(".dat") and "icu" in m.name:
+                dest = tree / "share" / "icu" / Path(m.name).name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(tf.extractfile(m).read())
+                print(f"   graft: {dest.name} <- {url.rsplit('/', 1)[1]}")
+                return
+    raise RuntimeError(f"no .dat found in {url}")
+
+
 def _assert_glibc_floor(tree: Path, plat_tag: str) -> None:
     """For manylinux targets: measured max GLIBC_x.y must be <= the tag floor."""
     m = re.match(r"manylinux_(\d+)_(\d+)_", plat_tag)
@@ -336,6 +373,8 @@ def build_one(version: str, target: str, checksums: dict) -> Path:
         prune_extensions(PGINSTALL)
         if "linux" in target:
             graft_linux(PGINSTALL, target)
+        if "musl" in target:
+            graft_icu_data(PGINSTALL)
         _assert_glibc_floor(PGINSTALL, plat)
         # setuptools reuses build/ across runs and never REMOVES files there —
         # without this wipe, target N's wheel would contain target N-1's binaries.

@@ -29,6 +29,14 @@ def _candidates(name: str) -> list[str]:
     return [f"{name}.exe", name] if os.name == "nt" else [name]
 
 
+def icu_data_dir() -> str | None:
+    """Directory holding bundled ICU data, or None on platforms that don't
+    need it. On musl/Alpine wheels, set ICU_DATA to this before running
+    initdb/postgres (Alpine's ICU reads its data from an external file)."""
+    d = _PGINSTALL / "share" / "icu"
+    return str(d) if d.is_dir() else None
+
+
 def tool(name: str) -> str:
     """Full path to a bundled tool (e.g. 'initdb', 'pg_ctl', 'pg_dump').
 

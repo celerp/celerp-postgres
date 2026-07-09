@@ -35,9 +35,12 @@ class Cluster:
         self.port = _free_port() if IS_WIN else 5432  # port unused for sockets
 
     def run(self, name, *args, check=True):
+        env = os.environ.copy()
+        if celerp_postgres.icu_data_dir():
+            env["ICU_DATA"] = celerp_postgres.icu_data_dir()
         r = subprocess.run(
             [celerp_postgres.tool(name), *args],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=env,
         )
         if check and r.returncode:
             log = self.pgdata / "log"

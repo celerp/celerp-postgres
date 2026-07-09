@@ -60,7 +60,9 @@ jobs:
         shell: bash
         run: |
           BIN=$(python -c "import celerp_postgres;print(celerp_postgres.tool('postgres'))")
-          MINOS=$(otool -l "$BIN" | grep -A3 'LC_BUILD_VERSION\|LC_VERSION_MIN_MACOSX' | awk '/minos|version /{print $2; exit}')
+          otool -l "$BIN" | grep -B1 -A4 'LC_BUILD_VERSION\|LC_VERSION_MIN_MACOSX' || true
+          MINOS=$(otool -l "$BIN" | awk '/LC_BUILD_VERSION/{f=1} f && /minos/{print $2; exit}')
+          [ -n "$MINOS" ] || MINOS=$(otool -l "$BIN" | awk '/LC_VERSION_MIN_MACOSX/{f=1} f && /version /{print $2; exit}')
           echo "binary minos=$MINOS wheel tag=${{ matrix.pick }}"
           TAG_V=$(echo "${{ matrix.pick }}" | sed -E 's/macosx_([0-9]+)_([0-9]+).*/\1.\2/')
           python - "$MINOS" "$TAG_V" <<'PY'

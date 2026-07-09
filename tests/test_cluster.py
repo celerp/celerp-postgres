@@ -35,10 +35,18 @@ class Cluster:
         self.port = _free_port() if IS_WIN else 5432  # port unused for sockets
 
     def run(self, name, *args, check=True):
-        return subprocess.run(
+        r = subprocess.run(
             [celerp_postgres.tool(name), *args],
-            capture_output=True, text=True, check=check,
+            capture_output=True, text=True,
         )
+        if check and r.returncode:
+            log = self.pgdata / "log"
+            raise RuntimeError(
+                f"{name} failed rc={r.returncode}\n"
+                f"STDOUT: {r.stdout[-1500:]}\nSTDERR: {r.stderr[-1500:]}\n"
+                f"SERVERLOG: {log.read_text()[-1500:] if log.exists() else '-'}"
+            )
+        return r
 
     def start(self):
         if not (self.pgdata / "PG_VERSION").exists():

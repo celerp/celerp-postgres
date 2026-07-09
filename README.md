@@ -66,9 +66,11 @@ build-against-libpq SDK.
 Any CPython ≥ 3.9. Wheels only — there is deliberately no sdist, because a source
 install could not contain the binaries and would silently produce a broken package.
 
-The glibc, macOS, and Windows wheels are fully self-contained. The Alpine/musl wheels
-additionally need a handful of runtime libraries from apk:
-`apk add icu-libs libxml2 zstd-libs lz4-libs krb5-libs readline`.
+Every wheel is fully self-contained: the required shared libraries (openssl, icu,
+libxml2, compression codecs, …) ship inside the package, so it works on minimal images
+like `python:slim` and `python:alpine` with no system packages. A few niche server
+extensions that would drag in huge or host-specific dependencies (`plpython3u`,
+JIT/`llvmjit`, `uuid-ossp`, `xml2`) are not included.
 
 ## API
 

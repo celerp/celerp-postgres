@@ -1,0 +1,8 @@
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+.venv/
+# Binaries are staged here at build time only — never committed.
+src/celerp_postgres/pginstall/

@@ -22,8 +22,10 @@ from celerp_postgres import tool
 
 data = tempfile.mkdtemp()
 
-# One-time cluster init (no password prompts: local trust auth)
-subprocess.run([tool("initdb"), "-D", data, "-U", "postgres", "-A", "trust"], check=True)
+# One-time cluster init (no password prompts: local trust auth; libc collation
+# keeps the package fully self-contained — ICU remains available per-collation)
+subprocess.run([tool("initdb"), "-D", data, "-U", "postgres", "-A", "trust",
+                "--locale-provider=libc"], check=True)
 
 # Start on localhost:54321
 subprocess.run([tool("pg_ctl"), "-D", data, "-w",
@@ -60,7 +62,7 @@ build-against-libpq SDK.
 |---|---|
 | `manylinux_2_34_x86_64` / `_aarch64` | Linux (glibc 2.34+) |
 | `musllinux_1_2_x86_64` / `_aarch64` | Alpine / musl Linux |
-| `macosx_10_15_x86_64`, `macosx_11_0_arm64` | macOS Intel / Apple Silicon |
+| `macosx_26_0_x86_64`, `macosx_26_0_arm64` | macOS 26+ (upstream binaries target current macOS) |
 | `win_amd64` | Windows x64 |
 
 Any CPython ≥ 3.9. Wheels only — there is deliberately no sdist, because a source

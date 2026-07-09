@@ -50,8 +50,12 @@ class Cluster:
 
     def start(self):
         if not (self.pgdata / "PG_VERSION").exists():
+            # libc locale provider: ICU collators need external ICU data that
+            # musl builds keep outside the package. ICU stays available for
+            # opt-in per-collation use.
             self.run("initdb", "-D", str(self.pgdata), "-U", "postgres",
-                     "-A", "trust", "-E", "UTF8", "--no-sync")
+                     "-A", "trust", "-E", "UTF8", "--no-sync",
+                     "--locale-provider=libc")
         opts = (
             f"-c listen_addresses=127.0.0.1 -c port={self.port}" if IS_WIN
             else f"-c listen_addresses='' -c unix_socket_directories='{self.host}'"

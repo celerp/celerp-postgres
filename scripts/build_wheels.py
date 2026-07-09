@@ -40,8 +40,10 @@ TARGETS: dict[str, str] = {
     "aarch64-unknown-linux-gnu": "manylinux_2_34_aarch64",
     "x86_64-unknown-linux-musl": "musllinux_1_2_x86_64",
     "aarch64-unknown-linux-musl": "musllinux_1_2_aarch64",
-    "x86_64-apple-darwin": "macosx_10_15_x86_64",
-    "aarch64-apple-darwin": "macosx_11_0_arm64",
+    # theseus mac binaries are built with LC_BUILD_VERSION minos 26.0 (measured
+    # via macholib) — tag honestly so pip never selects them on older macOS.
+    "x86_64-apple-darwin": "macosx_26_0_x86_64",
+    "aarch64-apple-darwin": "macosx_26_0_arm64",
     "x86_64-pc-windows-msvc": "win_amd64",
 }
 URL = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-{t}.tar.gz"
@@ -125,9 +127,15 @@ def stage(extracted: Path, dest: Path = PGINSTALL) -> None:
 # $ORIGIN/../lib) and RPATH-patching every grafted lib. Sources: AlmaLinux 9
 # packages for gnu (glibc 2.34 == our tag floor), Alpine 3.20 for musl.
 
-# Extensions whose dependency trees we refuse to ship (LLVM ~100MB, host python,
-# legacy uuid, xslt). Deleting the plugin removes the dependency.
-PRUNE_LIBS = ("llvmjit", "plpython3", "uuid-ossp", "pgxml", "xml2")
+# Extension PLUGIN files whose dependency trees we refuse to ship (LLVM ~100MB,
+# host python, legacy uuid, xslt). Exact basenames only — a loose "*xml2*" glob
+# once deleted libxml2.dll/dylib, which the server itself links.
+PRUNE_LIBS = re.compile(
+    # plugin basenames only — never `lib*` runtime libraries (libxml2.dll is the
+    # server's own dependency; xml2.so is the prunable contrib extension).
+    r"^(?!lib)([\w]*(llvmjit|plpython3|uuid-ossp|pgxml|xslt)[\w-]*|xml2)\.(so|dll|dylib)$"
+)
+PRUNE_SHARE = re.compile(r"^(uuid-ossp|xml2|plpython)")
 # Never grafted: guaranteed by the platform baseline.
 BASE_SONAMES = re.compile(
     r"^(libc\.so|libm\.so|libdl\.so|libpthread\.so|librt\.so|libutil\.so"
@@ -150,12 +158,12 @@ def _is_elf(f: Path) -> bool:
 
 
 def prune_extensions(tree: Path) -> None:
-    for pat in PRUNE_LIBS:
-        for f in list(tree.rglob(f"*{pat}*")):
-            if f.is_dir():
-                shutil.rmtree(f, ignore_errors=True)
-            else:
-                f.unlink(missing_ok=True)
+    for f in list(tree.rglob("*")):
+        if f.is_file() and (
+            PRUNE_LIBS.match(f.name)
+            or ("extension" in f.parts and PRUNE_SHARE.match(f.name))
+        ):
+            f.unlink(missing_ok=True)
     shutil.rmtree(tree / "lib" / "bitcode", ignore_errors=True)  # llvmjit bitcode
 
 
@@ -254,6 +262,16 @@ def graft_linux(tree: Path, target: str) -> None:
     arch = "aarch64" if target.startswith("aarch64") else "x86_64"
     index = _alpine_index(arch) if "musl" in target else _alma_index(arch)
     pkg_cache: dict[str, dict[str, bytes]] = {}
+
+    # Normalize RPATH on EVERY linux ELF, not just grafted ones: transitive deps
+    # (initdb -> libpq -> libgssapi) resolve via the DEPENDING lib's runpath, and
+    # upstream libs like libpq ship without one — on minimal images the lookup
+    # then falls through to (empty) system dirs.
+    for f in tree.rglob("*"):
+        if _is_elf(f):
+            rp = "$ORIGIN/../lib" if f.parent.name == "bin" else "$ORIGIN"
+            subprocess.run(["patchelf", "--force-rpath", "--set-rpath", rp, str(f)],
+                           check=True, capture_output=True)
 
     for _round in range(6):
         have = {f.name for f in (tree / "lib").iterdir()}

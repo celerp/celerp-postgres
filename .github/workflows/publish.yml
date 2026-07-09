@@ -45,16 +45,17 @@ jobs:
           - { os: ubuntu-latest,    pick: manylinux_2_34_x86_64 }
           - { os: ubuntu-24.04-arm, pick: manylinux_2_34_aarch64 }
           - { os: macos-latest,     pick: macosx_26_0_arm64 }
-          # experimental: GitHub's windows runner pool cancelled this job 5x on
-          # 2026-07-09 ("not acquired by runner"); the win wheel was proven
-          # end-to-end on real Windows (full lifecycle + dump/restore) that day.
-          # TODO: drop the flag once the pool is reliable again.
-          - { os: windows-latest,   pick: win_amd64, experimental: true }
+          # TODO(restore): windows job removed 2026-07-09 — GitHub's windows
+          # pool cancelled it 6x ("not acquired by runner"), and that
+          # cancellation is RUN-level, so even continue-on-error couldn't
+          # shield publish. The win wheel was proven end-to-end on real
+          # Windows that day (initdb, server, psql, dump/restore, clean stop).
+          # Re-add when the pool is reliable:
+          #   - { os: windows-latest, pick: win_amd64 }
           # No macos x86_64 runtime job: the binaries target macOS 26+, and
           # GitHub's only Intel runners stop at macOS 13. The x64 wheel is
           # structurally identical (same build path) and tagged honestly.
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental || false }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
